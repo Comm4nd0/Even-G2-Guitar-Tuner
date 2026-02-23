@@ -8,7 +8,9 @@ export class GlassesDisplay {
   private offscreenCanvas: HTMLCanvasElement;
   private offscreenCtx: CanvasRenderingContext2D;
   private connected = false;
+  private pageCreated = false;
   private onTuningChange: (() => void) | null = null;
+  private unsubscribeDeviceStatus: (() => void) | null = null;
 
   constructor() {
     this.offscreenCanvas = document.createElement('canvas');
@@ -25,13 +27,77 @@ export class GlassesDisplay {
     try {
       EvenSDK = await import('@evenrealities/even_hub_sdk');
       this.bridge = await EvenSDK.waitForEvenAppBridge();
+
+      // Verify the glasses are reachable by checking device info
+      const device = await this.bridge.getDeviceInfo();
+      if (device && device.status?.connectType === 'connected') {
+        return await this.setupGlassesDisplay();
+      }
+
+      // Glasses not connected yet - wait for connection
+      return await this.waitForGlassesConnection();
+    } catch (e) {
+      console.warn('Glasses not available:', e);
+      this.connected = false;
+      return false;
+    }
+  }
+
+  private waitForGlassesConnection(): Promise<boolean> {
+    return new Promise((resolve) => {
+      if (!this.bridge) {
+        resolve(false);
+        return;
+      }
+
+      // Timeout after 15 seconds if glasses never connect
+      const timeout = setTimeout(() => {
+        if (this.unsubscribeDeviceStatus) {
+          this.unsubscribeDeviceStatus();
+          this.unsubscribeDeviceStatus = null;
+        }
+        console.warn('Glasses connection timed out');
+        resolve(false);
+      }, 15000);
+
+      this.unsubscribeDeviceStatus = this.bridge.onDeviceStatusChanged(async (status: any) => {
+        if (status?.connectType === 'connected') {
+          clearTimeout(timeout);
+          if (this.unsubscribeDeviceStatus) {
+            this.unsubscribeDeviceStatus();
+            this.unsubscribeDeviceStatus = null;
+          }
+          const success = await this.setupGlassesDisplay();
+          resolve(success);
+        }
+      });
+    });
+  }
+
+  private async setupGlassesDisplay(): Promise<boolean> {
+    try {
+      const result = await this.createInitialPage();
+      if (result !== 0) {
+        console.warn('createStartUpPageContainer failed with result:', result);
+        return false;
+      }
+      this.pageCreated = true;
       this.connected = true;
-      await this.createInitialPage();
       this.setupEventListeners();
+
+      // Send initial gauge image so the image container has content
+      this.renderGaugeImage(0, false);
+      const dataUrl = this.offscreenCanvas.toDataURL('image/png');
+      const base64 = dataUrl.replace(/^data:image\/png;base64,/, '');
+      await this.bridge.updateImageRawData({
+        containerID: 2,
+        containerName: 'gauge',
+        imageData: base64,
+      });
+
       return true;
     } catch (e) {
-      console.warn('Glasses not connected:', e);
-      this.connected = false;
+      console.warn('Failed to setup glasses display:', e);
       return false;
     }
   }
@@ -40,13 +106,14 @@ export class GlassesDisplay {
     return this.connected;
   }
 
-  private async createInitialPage(): Promise<void> {
-    if (!this.bridge || !EvenSDK) return;
+  private async createInitialPage(): Promise<number> {
+    if (!this.bridge || !EvenSDK) return 1;
 
-    const page = new EvenSDK.CreateStartUpPageContainer({
+    // Use plain objects as shown in SDK docs rather than class instances
+    const result = await this.bridge.createStartUpPageContainer({
       containerTotalNum: 3,
       textObject: [
-        new EvenSDK.TextContainerProperty({
+        {
           containerID: 1,
           containerName: 'header',
           xPosition: 0,
@@ -57,8 +124,8 @@ export class GlassesDisplay {
           borderWidth: 0,
           paddingLength: 4,
           isEventCapture: 0,
-        }),
-        new EvenSDK.TextContainerProperty({
+        },
+        {
           containerID: 3,
           containerName: 'noteinfo',
           xPosition: 0,
@@ -69,31 +136,35 @@ export class GlassesDisplay {
           borderWidth: 0,
           paddingLength: 4,
           isEventCapture: 1,
-        }),
+        },
       ],
       imageObject: [
-        new EvenSDK.ImageContainerProperty({
+        {
           containerID: 2,
           containerName: 'gauge',
           xPosition: 188,
           yPosition: 55,
           width: 200,
           height: 100,
-        }),
+        },
       ],
     });
 
-    await this.bridge.createStartUpPageContainer(page);
+    return typeof result === 'number' ? result : 1;
   }
 
   private setupEventListeners(): void {
     if (!this.bridge) return;
 
     this.bridge.onEvenHubEvent((event: any) => {
-      const evtType = event.textEvent?.eventType;
-      // Click event (0 or undefined due to SDK quirk)
-      if (evtType === 0 || evtType === undefined) {
-        if (event.textEvent && this.onTuningChange) {
+      if (event.sysEvent) {
+        // Handle system events (foreground enter/exit)
+        return;
+      }
+      if (event.textEvent && this.onTuningChange) {
+        const evtType = event.textEvent.eventType;
+        // Click event (0 or undefined due to SDK quirk)
+        if (evtType === 0 || evtType === undefined) {
           this.onTuningChange();
         }
       }
@@ -101,7 +172,7 @@ export class GlassesDisplay {
   }
 
   async update(result: DetectionResult, tuning: TuningMode): Promise<void> {
-    if (!this.connected || !this.bridge || !EvenSDK) return;
+    if (!this.connected || !this.bridge || !this.pageCreated) return;
 
     try {
       // Update gauge image
@@ -109,34 +180,34 @@ export class GlassesDisplay {
       const dataUrl = this.offscreenCanvas.toDataURL('image/png');
       const base64 = dataUrl.replace(/^data:image\/png;base64,/, '');
 
-      await this.bridge.updateImageRawData(new EvenSDK.ImageRawDataUpdate({
+      await this.bridge.updateImageRawData({
         containerID: 2,
         containerName: 'gauge',
         imageData: base64,
-      }));
+      });
 
       // Update note text
       const noteText = `     ${result.noteName}${result.octave}\n    ${result.centsOff > 0 ? '+' : ''}${result.centsOff} cents`;
-      await this.bridge.textContainerUpgrade(new EvenSDK.TextContainerUpgrade({
+      await this.bridge.textContainerUpgrade({
         containerID: 3,
         containerName: 'noteinfo',
         content: noteText,
-      }));
+      });
     } catch (e) {
       // Silently handle update failures (glasses may disconnect)
     }
   }
 
   async updateTuningHeader(tuning: TuningMode): Promise<void> {
-    if (!this.connected || !this.bridge || !EvenSDK) return;
+    if (!this.connected || !this.bridge || !this.pageCreated) return;
 
     try {
       const stringNames = tuning.strings.map(s => s.note.replace(/[0-9]/g, '')).join(' ');
-      await this.bridge.textContainerUpgrade(new EvenSDK.TextContainerUpgrade({
+      await this.bridge.textContainerUpgrade({
         containerID: 1,
         containerName: 'header',
         content: `${tuning.name}  ${stringNames}`,
-      }));
+      });
     } catch (e) {
       // Silently handle
     }

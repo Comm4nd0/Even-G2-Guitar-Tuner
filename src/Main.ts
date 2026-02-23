@@ -28,14 +28,16 @@ const gaugeCanvas = document.getElementById('gauge') as HTMLCanvasElement;
 phoneGauge = new CanvasGauge(gaugeCanvas);
 renderStringTargets();
 
-// Glasses: try to connect (non-blocking)
+// Glasses: try to connect (non-blocking, waits for BLE connection)
 glassesDisplay.init().then((connected) => {
   if (connected) {
-    console.log('Glasses connected');
+    console.log('Glasses connected and display initialized');
     glassesDisplay.setOnTuningChange(() => {
       tunerEngine.nextTuning();
       updateTuningUI();
     });
+    // Send current tuning header in case it changed while waiting for connection
+    glassesDisplay.updateTuningHeader(tunerEngine.currentTuning).catch(() => {});
   }
 });
 
