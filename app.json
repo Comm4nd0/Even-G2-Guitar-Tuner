@@ -1,0 +1,15 @@
+{
+  "package_id": "com.marcobaldanza.guitartuner",
+  "edition": "202602",
+  "name": "Guitar Tuner",
+  "version": "1.0.0",
+  "min_app_version": "0.1.0",
+  "tagline": "Chromatic guitar tuner for Even G2",
+  "description": "Real-time guitar tuner with needle gauge display. Supports Standard, Drop D, Half Step Down, Open G, and DADGAD tunings.",
+  "author": "Marco Baldanza",
+  "entrypoint": "index.html",
+  "permissions": {
+    "network": [],
+    "fs": []
+  }
+}

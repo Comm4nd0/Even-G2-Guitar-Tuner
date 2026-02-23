@@ -1,0 +1,198 @@
+:root {
+  --bg: #0a0a0a;
+  --surface: #1a1a1a;
+  --text: #ffffff;
+  --text-muted: #888888;
+  --green: #00ff88;
+  --red: #ff4444;
+  --yellow: #ffaa00;
+  --border: #333333;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  min-height: 100dvh;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px;
+  gap: 12px;
+  max-width: 420px;
+  margin: 0 auto;
+}
+
+/* Tuning selector */
+#tuning-selector {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 8px 0;
+}
+
+#tuning-name {
+  font-size: 20px;
+  font-weight: 600;
+  min-width: 160px;
+  text-align: center;
+}
+
+.tuning-nav {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 28px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.tuning-nav:active {
+  background: var(--border);
+}
+
+/* String targets */
+#string-targets {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  padding: 4px 0;
+}
+
+.string-target {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.string-target.active {
+  border-color: var(--green);
+  color: var(--green);
+}
+
+.string-target.in-tune {
+  border-color: var(--green);
+  color: var(--green);
+  background: rgba(0, 255, 136, 0.1);
+}
+
+/* Canvas gauge */
+#gauge {
+  display: block;
+  width: 100%;
+  max-width: 360px;
+  aspect-ratio: 3 / 2;
+}
+
+/* Note display */
+#note-display {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+#note-name {
+  font-size: 80px;
+  font-weight: 700;
+  line-height: 1;
+  transition: color 0.15s;
+}
+
+#note-name.in-tune {
+  color: var(--green);
+}
+
+#note-name.sharp {
+  color: var(--red);
+}
+
+#note-name.flat {
+  color: var(--yellow);
+}
+
+#octave-number {
+  font-size: 28px;
+  color: var(--text-muted);
+}
+
+/* Cents display */
+#cents-display {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+#cents-value {
+  font-size: 32px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  min-width: 60px;
+  text-align: right;
+}
+
+.cents-label {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+/* Frequency display */
+#frequency-display {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+#freq-value {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Start button */
+#start-btn {
+  background: var(--green);
+  color: #000;
+  border: none;
+  padding: 14px 40px;
+  border-radius: 12px;
+  font-size: 18px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 8px;
+}
+
+#start-btn:active {
+  opacity: 0.8;
+}
+
+#start-btn.listening {
+  background: var(--surface);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}

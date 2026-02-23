@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Guitar Tuner</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div id="app">
+    <div id="tuning-selector">
+      <button id="tuning-prev" class="tuning-nav">&lsaquo;</button>
+      <span id="tuning-name">Standard</span>
+      <button id="tuning-next" class="tuning-nav">&rsaquo;</button>
+    </div>
+
+    <div id="string-targets"></div>
+
+    <canvas id="gauge"></canvas>
+
+    <div id="note-display">
+      <span id="note-name">--</span>
+      <span id="octave-number"></span>
+    </div>
+
+    <div id="cents-display">
+      <span id="cents-value">0</span>
+      <span class="cents-label">cents</span>
+    </div>
+
+    <div id="frequency-display">
+      <span id="freq-value">--</span>
+      <span class="freq-label">Hz</span>
+    </div>
+
+    <button id="start-btn">Tap to Start</button>
+  </div>
+
+  <script type="module" src="/src/Main.ts"></script>
+</body>
+</html>
