@@ -2,11 +2,13 @@
 
 A real-time chromatic guitar tuner built for the [Even Reality G2](https://www.evenrealities.com/) smart glasses. Uses the phone microphone to detect pitch via the Web Audio API and displays a needle gauge tuner on both the phone screen and the glasses display.
 
-## QR Code
+## Live App
+
+**URL:** [https://comm4nd0.github.io/Even-G2-Guitar-Tuner/](https://comm4nd0.github.io/Even-G2-Guitar-Tuner/)
+
+Scan this QR code in the Even app to load the tuner on your G2 glasses:
 
 ![QR Code](qrcode.png)
-
-Scan this QR code in the Even app to load the tuner on your G2 glasses.
 
 ## Features
 
