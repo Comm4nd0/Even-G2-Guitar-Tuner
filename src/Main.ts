@@ -23,20 +23,25 @@ const startBtn = document.getElementById('start-btn')!;
 const prevBtn = document.getElementById('tuning-prev')!;
 const nextBtn = document.getElementById('tuning-next')!;
 const gaugeCanvas = document.getElementById('gauge') as HTMLCanvasElement;
+const glassesStatusEl = document.getElementById('glasses-status')!;
 
 // Initialize
 phoneGauge = new CanvasGauge(gaugeCanvas);
 renderStringTargets();
 
+// Glasses status display on phone UI
+glassesDisplay.setOnStatus((msg, ok) => {
+  glassesStatusEl.textContent = `Glasses: ${msg}`;
+  glassesStatusEl.className = ok ? 'connected' : '';
+});
+
 // Glasses: try to connect (non-blocking, waits for BLE connection)
 glassesDisplay.init().then((connected) => {
   if (connected) {
-    console.log('Glasses connected and display initialized');
     glassesDisplay.setOnTuningChange(() => {
       tunerEngine.nextTuning();
       updateTuningUI();
     });
-    // Send current tuning header in case it changed while waiting for connection
     glassesDisplay.updateTuningHeader(tunerEngine.currentTuning).catch(() => {});
   }
 });

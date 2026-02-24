@@ -3,6 +3,8 @@ import { DetectionResult, TuningMode } from './types';
 // Even Hub SDK types - imported dynamically to allow phone-only mode
 let EvenSDK: any = null;
 
+type StatusCallback = (msg: string, ok: boolean) => void;
+
 export class GlassesDisplay {
   private bridge: any = null;
   private offscreenCanvas: HTMLCanvasElement;
@@ -10,6 +12,7 @@ export class GlassesDisplay {
   private connected = false;
   private pageCreated = false;
   private onTuningChange: (() => void) | null = null;
+  private onStatus: StatusCallback | null = null;
   private unsubscribeDeviceStatus: (() => void) | null = null;
 
   constructor() {
@@ -23,22 +26,73 @@ export class GlassesDisplay {
     this.onTuningChange = callback;
   }
 
+  setOnStatus(callback: StatusCallback): void {
+    this.onStatus = callback;
+  }
+
+  private reportStatus(msg: string, ok: boolean): void {
+    console.log(`[Glasses] ${msg}`);
+    if (this.onStatus) this.onStatus(msg, ok);
+  }
+
   async init(): Promise<boolean> {
     try {
+      this.reportStatus('Importing SDK...', false);
       EvenSDK = await import('@evenrealities/even_hub_sdk');
-      this.bridge = await EvenSDK.waitForEvenAppBridge();
+      this.reportStatus('SDK loaded, waiting for bridge...', false);
 
-      // Verify the glasses are reachable by checking device info
-      const device = await this.bridge.getDeviceInfo();
-      if (device && device.status?.connectType === 'connected') {
+      this.bridge = await EvenSDK.waitForEvenAppBridge();
+      this.reportStatus('Bridge ready, checking device...', false);
+
+      // Try to get device info for diagnostic purposes
+      let deviceConnected = false;
+      try {
+        const device = await this.bridge.getDeviceInfo();
+        const connectType = device?.status?.connectType;
+        this.reportStatus(`Device: ${connectType ?? 'no device info'}`, false);
+        deviceConnected = connectType === 'connected';
+      } catch (e) {
+        this.reportStatus(`getDeviceInfo error: ${e}`, false);
+      }
+
+      if (deviceConnected) {
+        // Glasses already connected - set up display immediately
         return await this.setupGlassesDisplay();
       }
 
-      // Glasses not connected yet - wait for connection
+      // Try creating the page anyway - getDeviceInfo may not reflect
+      // the actual glasses state accurately in all firmware versions
+      this.reportStatus('Trying page creation anyway...', false);
+      const directAttempt = await this.trySetupDirect();
+      if (directAttempt) return true;
+
+      // Fall back to waiting for explicit connection event
+      this.reportStatus('Waiting for glasses connection...', false);
       return await this.waitForGlassesConnection();
     } catch (e) {
-      console.warn('Glasses not available:', e);
+      const msg = e instanceof Error ? e.message : String(e);
+      this.reportStatus(`Init failed: ${msg}`, false);
       this.connected = false;
+      return false;
+    }
+  }
+
+  private async trySetupDirect(): Promise<boolean> {
+    try {
+      const result = await this.createInitialPage();
+      this.reportStatus(`Direct page create result: ${result}`, false);
+      if (result === 0) {
+        this.pageCreated = true;
+        this.connected = true;
+        this.setupEventListeners();
+        await this.sendInitialGauge();
+        this.reportStatus('Glasses connected!', true);
+        return true;
+      }
+      return false;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      this.reportStatus(`Direct setup error: ${msg}`, false);
       return false;
     }
   }
@@ -46,22 +100,24 @@ export class GlassesDisplay {
   private waitForGlassesConnection(): Promise<boolean> {
     return new Promise((resolve) => {
       if (!this.bridge) {
+        this.reportStatus('No bridge available', false);
         resolve(false);
         return;
       }
 
-      // Timeout after 15 seconds if glasses never connect
       const timeout = setTimeout(() => {
         if (this.unsubscribeDeviceStatus) {
           this.unsubscribeDeviceStatus();
           this.unsubscribeDeviceStatus = null;
         }
-        console.warn('Glasses connection timed out');
+        this.reportStatus('Connection timed out (15s)', false);
         resolve(false);
       }, 15000);
 
       this.unsubscribeDeviceStatus = this.bridge.onDeviceStatusChanged(async (status: any) => {
-        if (status?.connectType === 'connected') {
+        const ct = status?.connectType;
+        this.reportStatus(`Device status changed: ${ct}`, false);
+        if (ct === 'connected') {
           clearTimeout(timeout);
           if (this.unsubscribeDeviceStatus) {
             this.unsubscribeDeviceStatus();
@@ -76,29 +132,44 @@ export class GlassesDisplay {
 
   private async setupGlassesDisplay(): Promise<boolean> {
     try {
+      this.reportStatus('Creating page containers...', false);
       const result = await this.createInitialPage();
+      this.reportStatus(`createStartUpPageContainer result: ${result}`, false);
+
+      // Accept result === 0 (success enum)
       if (result !== 0) {
-        console.warn('createStartUpPageContainer failed with result:', result);
+        this.reportStatus(`Page creation failed (${result})`, false);
         return false;
       }
       this.pageCreated = true;
       this.connected = true;
       this.setupEventListeners();
 
-      // Send initial gauge image so the image container has content
-      this.renderGaugeImage(0, false);
-      const dataUrl = this.offscreenCanvas.toDataURL('image/png');
-      const base64 = dataUrl.replace(/^data:image\/png;base64,/, '');
-      await this.bridge.updateImageRawData({
+      await this.sendInitialGauge();
+      this.reportStatus('Glasses connected!', true);
+      return true;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      this.reportStatus(`Setup failed: ${msg}`, false);
+      return false;
+    }
+  }
+
+  private async sendInitialGauge(): Promise<void> {
+    this.renderGaugeImage(0, false);
+    const dataUrl = this.offscreenCanvas.toDataURL('image/png');
+    const base64 = dataUrl.replace(/^data:image\/png;base64,/, '');
+
+    try {
+      const imgResult = await this.bridge.updateImageRawData({
         containerID: 2,
         containerName: 'gauge',
         imageData: base64,
       });
-
-      return true;
+      this.reportStatus(`Initial image result: ${imgResult}`, true);
     } catch (e) {
-      console.warn('Failed to setup glasses display:', e);
-      return false;
+      const msg = e instanceof Error ? e.message : String(e);
+      this.reportStatus(`Image send error: ${msg}`, true);
     }
   }
 
@@ -109,7 +180,6 @@ export class GlassesDisplay {
   private async createInitialPage(): Promise<number> {
     if (!this.bridge || !EvenSDK) return 1;
 
-    // Use plain objects as shown in SDK docs rather than class instances
     const result = await this.bridge.createStartUpPageContainer({
       containerTotalNum: 3,
       textObject: [
@@ -158,12 +228,10 @@ export class GlassesDisplay {
 
     this.bridge.onEvenHubEvent((event: any) => {
       if (event.sysEvent) {
-        // Handle system events (foreground enter/exit)
         return;
       }
       if (event.textEvent && this.onTuningChange) {
         const evtType = event.textEvent.eventType;
-        // Click event (0 or undefined due to SDK quirk)
         if (evtType === 0 || evtType === undefined) {
           this.onTuningChange();
         }
@@ -175,7 +243,6 @@ export class GlassesDisplay {
     if (!this.connected || !this.bridge || !this.pageCreated) return;
 
     try {
-      // Update gauge image
       this.renderGaugeImage(result.centsOff, result.inTune);
       const dataUrl = this.offscreenCanvas.toDataURL('image/png');
       const base64 = dataUrl.replace(/^data:image\/png;base64,/, '');
@@ -186,14 +253,13 @@ export class GlassesDisplay {
         imageData: base64,
       });
 
-      // Update note text
       const noteText = `     ${result.noteName}${result.octave}\n    ${result.centsOff > 0 ? '+' : ''}${result.centsOff} cents`;
       await this.bridge.textContainerUpgrade({
         containerID: 3,
         containerName: 'noteinfo',
         content: noteText,
       });
-    } catch (e) {
+    } catch {
       // Silently handle update failures (glasses may disconnect)
     }
   }
@@ -208,7 +274,7 @@ export class GlassesDisplay {
         containerName: 'header',
         content: `${tuning.name}  ${stringNames}`,
       });
-    } catch (e) {
+    } catch {
       // Silently handle
     }
   }
@@ -218,7 +284,6 @@ export class GlassesDisplay {
     const w = 200;
     const h = 100;
 
-    // Clear
     ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, w, h);
 
@@ -226,23 +291,19 @@ export class GlassesDisplay {
     const cy = h + 15;
     const radius = 80;
 
-    // Arc background
     ctx.strokeStyle = '#444444';
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.arc(cx, cy, radius, Math.PI + 0.4, -0.4);
     ctx.stroke();
 
-    // In-tune center zone (brighter)
     ctx.strokeStyle = inTune ? '#ffffff' : '#666666';
     ctx.lineWidth = 5;
     ctx.beginPath();
     ctx.arc(cx, cy, radius, Math.PI + 1.15, Math.PI + 1.45);
     ctx.stroke();
 
-    // Tick marks
     for (let i = -5; i <= 5; i++) {
-      const angle = Math.PI + 0.4 + (i + 5) / 10 * (2 * Math.PI - 0.8 - Math.PI - 0.4 + Math.PI);
       const normAngle = -Math.PI / 2 + (i / 5) * 0.9;
       const tickLen = i === 0 ? 12 : 6;
       ctx.strokeStyle = i === 0 ? '#ffffff' : '#666666';
@@ -253,7 +314,6 @@ export class GlassesDisplay {
       ctx.stroke();
     }
 
-    // Needle
     const clampedCents = Math.max(-50, Math.min(50, centsOff));
     const needleAngle = -Math.PI / 2 + (clampedCents / 50) * 0.9;
     const needleLen = radius - 15;
@@ -268,7 +328,6 @@ export class GlassesDisplay {
     );
     ctx.stroke();
 
-    // Pivot dot
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
     ctx.arc(cx, cy, 3, 0, Math.PI * 2);
