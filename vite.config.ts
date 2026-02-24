@@ -23,7 +23,10 @@ function inlineBundle(): Plugin {
             `<script[^>]*src=["'][^"']*${chunk.fileName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'][^>]*>\\s*</script>`
           );
           html = html.replace(srcPattern, '');
-          html = html.replace('</body>', `<script>${chunk.code}</script>\n</body>`);
+          // Wrap the inlined IIFE in a try-catch so parse/runtime errors
+          // are surfaced on screen rather than silently swallowed
+          const wrapped = `<script>try{${chunk.code}}catch(e){var s=document.getElementById('status');if(s)s.textContent='App error: '+e.message;}</script>`;
+          html = html.replace('</body>', wrapped + '\n</body>');
           delete bundle[key];
         }
       }
@@ -52,7 +55,7 @@ export default defineConfig({
     port: 5173,
   },
   build: {
-    target: 'es2017',
+    target: 'es2015',
     cssCodeSplit: false,
     rollupOptions: {
       output: {

@@ -2,6 +2,10 @@ import { PitchDetector } from './PitchDetector';
 import { TunerEngine } from './TunerEngine';
 import { GlassesDisplay } from './GlassesDisplay';
 
+// Immediately signal that the IIFE is running
+(window as any).__appStarted = true;
+document.getElementById('status')!.textContent = 'App code running...';
+
 console.log('[Main] Guitar Tuner JS loaded');
 
 const pitchDetector = new PitchDetector();
