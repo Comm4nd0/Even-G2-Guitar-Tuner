@@ -4,17 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
   <title>Guitar Tuner</title>
-  <script>
-    window.onerror = function(msg, src, line, col) {
-      var s = document.getElementById('status');
-      if (s) s.textContent = 'JS Error: ' + msg;
-      else document.title = 'ERR: ' + msg;
-    };
-    window.addEventListener('unhandledrejection', function(e) {
-      var s = document.getElementById('status');
-      if (s) s.textContent = 'Promise error: ' + (e.reason || e);
-    });
-  </script>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
@@ -22,15 +11,5 @@
     <p id="status">Loading...</p>
   </div>
   <script type="module" src="/src/Main.ts"></script>
-  <script>
-    setTimeout(function() {
-      if (!window.__appStarted) {
-        var s = document.getElementById('status');
-        if (s && s.textContent === 'Loading...') {
-          s.textContent = 'App did not start. ' + location.protocol + ' ' + location.href.substring(0, 80);
-        }
-      }
-    }, 5000);
-  </script>
 </body>
 </html>
