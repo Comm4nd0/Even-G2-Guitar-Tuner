@@ -11,9 +11,21 @@
 </head>
 <body>
   <div id="app">
-    <p id="status">Connecting to glasses...</p>
+    <p id="status">Loading...</p>
   </div>
 
+  <script>
+    // Debug: catch any errors and show on screen
+    window.onerror = function(msg, src, line, col, err) {
+      var s = document.getElementById('status');
+      if (s) s.textContent = 'Error: ' + msg + ' (' + src + ':' + line + ')';
+    };
+    window.addEventListener('unhandledrejection', function(e) {
+      var s = document.getElementById('status');
+      if (s) s.textContent = 'Promise error: ' + (e.reason || e);
+    });
+    document.getElementById('status').textContent = 'JS OK, loading module...';
+  </script>
   <script type="module" src="/src/Main.ts"></script>
 </body>
 </html>
