@@ -3,9 +3,6 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
-  <meta http-equiv="Pragma" content="no-cache" />
-  <meta http-equiv="Expires" content="0" />
   <title>Guitar Tuner</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
@@ -13,34 +10,6 @@
   <div id="app">
     <p id="status">Loading...</p>
   </div>
-
-  <script>
-    // Debug: catch any errors and show on screen
-    window.onerror = function(msg, src, line, col, err) {
-      var s = document.getElementById('status');
-      if (s) s.textContent = 'Error: ' + msg + ' (' + src + ':' + line + ')';
-    };
-    window.addEventListener('unhandledrejection', function(e) {
-      var s = document.getElementById('status');
-      if (s) s.textContent = 'Promise error: ' + (e.reason || e);
-    });
-    document.getElementById('status').textContent = 'JS OK, loading module...';
-  </script>
   <script type="module" src="/src/Main.ts"></script>
-  <script>
-    // After the app script block, check if it ran at all.
-    setTimeout(function() {
-      if (!window.__appStarted) {
-        var s = document.getElementById('status');
-        if (s) {
-          var cur = s.textContent;
-          // Don't overwrite an existing error message
-          if (cur.indexOf('rror') === -1 && cur.indexOf('xecut') === -1) {
-            s.textContent = 'App script did not execute. Status was: ' + cur;
-          }
-        }
-      }
-    }, 1500);
-  </script>
 </body>
 </html>
