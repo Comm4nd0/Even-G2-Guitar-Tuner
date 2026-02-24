@@ -2,8 +2,9 @@ import { defineConfig, Plugin } from 'vite';
 
 // Inlines JS and CSS directly into index.html so there are no external
 // files to load. The JS bundle is stored in a non-executing <script> tag
-// and loaded via a small Blob URL loader to work around WebView limits
-// on inline script size and inability to fetch external assets.
+// and executed via eval() — the only method that works reliably in the
+// Even app WebView (external files, large inline scripts, and Blob URLs
+// are all blocked).
 function inlineBundle(): Plugin {
   return {
     name: 'inline-bundle',
@@ -16,8 +17,11 @@ function inlineBundle(): Plugin {
       if (htmlAsset.type !== 'asset') return;
       let html = htmlAsset.source as string;
 
-      // Inline all JS chunks — store code in a text/plain block and load
-      // via Blob URL to avoid WebView inline script size limits
+      // Store JS in a non-executing text/plain block, then eval() it
+      // from a tiny loader script. This avoids:
+      //  - External file fetches (blocked in WebView)
+      //  - Large inline <script> blocks (silently fail in WebView)
+      //  - Blob URLs (blocked in WebView)
       for (const [key, chunk] of Object.entries(bundle)) {
         if (chunk.type === 'chunk' && key.endsWith('.js')) {
           const srcPattern = new RegExp(
@@ -34,15 +38,11 @@ function inlineBundle(): Plugin {
   var s=document.getElementById('status');
   try{
     var code=document.getElementById('app-bundle').textContent;
-    var blob=new Blob([code],{type:'text/javascript'});
-    var url=URL.createObjectURL(blob);
-    var el=document.createElement('script');
-    el.onerror=function(e){if(s)s.textContent='Blob load error: '+e;};
-    el.onload=function(){URL.revokeObjectURL(url);};
-    el.src=url;
-    document.body.appendChild(el);
+    if(!code){if(s)s.textContent='Error: app-bundle element empty';return;}
+    if(s)s.textContent='Executing app ('+code.length+' chars)...';
+    (0,eval)(code);
   }catch(e){
-    if(s)s.textContent='Loader error: '+e.message;
+    if(s)s.textContent='Eval error: '+e.message;
   }
 })();
 </script>`;
