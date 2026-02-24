@@ -1,8 +1,9 @@
 import { defineConfig, Plugin } from 'vite';
 
 // Inlines JS and CSS directly into index.html so there are no external
-// files to load. This avoids issues with the Even app WebView failing to
-// fetch separate script/style assets.
+// files to load. The JS bundle is stored in a non-executing <script> tag
+// and loaded via a small Blob URL loader to work around WebView limits
+// on inline script size and inability to fetch external assets.
 function inlineBundle(): Plugin {
   return {
     name: 'inline-bundle',
@@ -15,18 +16,38 @@ function inlineBundle(): Plugin {
       if (htmlAsset.type !== 'asset') return;
       let html = htmlAsset.source as string;
 
-      // Inline all JS chunks — remove from <head> and place before </body>
-      // so the DOM is available when the script runs
+      // Inline all JS chunks — store code in a text/plain block and load
+      // via Blob URL to avoid WebView inline script size limits
       for (const [key, chunk] of Object.entries(bundle)) {
         if (chunk.type === 'chunk' && key.endsWith('.js')) {
           const srcPattern = new RegExp(
             `<script[^>]*src=["'][^"']*${chunk.fileName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'][^>]*>\\s*</script>`
           );
           html = html.replace(srcPattern, '');
-          // Wrap the inlined IIFE in a try-catch so parse/runtime errors
-          // are surfaced on screen rather than silently swallowed
-          const wrapped = `<script>try{${chunk.code}}catch(e){var s=document.getElementById('status');if(s)s.textContent='App error: '+e.message;}</script>`;
-          html = html.replace('</body>', wrapped + '\n</body>');
+
+          // Escape </script in the bundle so it doesn't close the text/plain tag
+          const safeCode = chunk.code.replace(/<\/script/gi, '<\\/script');
+
+          const storage = `<script type="text/plain" id="app-bundle">${safeCode}</script>`;
+          const loader = `<script>
+(function(){
+  var s=document.getElementById('status');
+  try{
+    var code=document.getElementById('app-bundle').textContent;
+    var blob=new Blob([code],{type:'text/javascript'});
+    var url=URL.createObjectURL(blob);
+    var el=document.createElement('script');
+    el.onerror=function(e){if(s)s.textContent='Blob load error: '+e;};
+    el.onload=function(){URL.revokeObjectURL(url);};
+    el.src=url;
+    document.body.appendChild(el);
+  }catch(e){
+    if(s)s.textContent='Loader error: '+e.message;
+  }
+})();
+</script>`;
+
+          html = html.replace('</body>', storage + '\n' + loader + '\n</body>');
           delete bundle[key];
         }
       }
