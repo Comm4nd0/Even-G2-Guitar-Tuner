@@ -10,6 +10,26 @@
   <div id="app">
     <p id="status">Loading...</p>
   </div>
+  <script>
+    window.onerror = function(msg, src, line, col) {
+      var s = document.getElementById('status');
+      if (s) s.textContent = 'Error: ' + msg + ' (line ' + line + ')';
+    };
+    window.addEventListener('unhandledrejection', function(e) {
+      var s = document.getElementById('status');
+      if (s) s.textContent = 'Promise error: ' + (e.reason || e);
+    });
+  </script>
   <script type="module" src="/src/Main.ts"></script>
+  <script>
+    setTimeout(function() {
+      if (!window.__appStarted) {
+        var s = document.getElementById('status');
+        if (s && s.textContent === 'Loading...') {
+          s.textContent = 'Module failed to load (check console)';
+        }
+      }
+    }, 5000);
+  </script>
 </body>
 </html>
