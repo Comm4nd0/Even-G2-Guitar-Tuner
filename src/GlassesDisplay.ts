@@ -2,9 +2,7 @@ import {
   waitForEvenAppBridge,
   CreateStartUpPageContainer,
   TextContainerProperty,
-  ImageContainerProperty,
   TextContainerUpgrade,
-  ImageRawDataUpdate,
   type EvenAppBridge,
 } from '@evenrealities/even_hub_sdk';
 import { DetectionResult, TuningMode } from './types';
@@ -13,19 +11,11 @@ type StatusCallback = (msg: string, ok: boolean) => void;
 
 export class GlassesDisplay {
   private bridge: EvenAppBridge | null = null;
-  private offscreenCanvas: HTMLCanvasElement;
-  private offscreenCtx: CanvasRenderingContext2D;
   private connected = false;
   private pageCreated = false;
   private onTuningChange: (() => void) | null = null;
   private onStatus: StatusCallback | null = null;
-
-  constructor() {
-    this.offscreenCanvas = document.createElement('canvas');
-    this.offscreenCanvas.width = 200;
-    this.offscreenCanvas.height = 100;
-    this.offscreenCtx = this.offscreenCanvas.getContext('2d')!;
-  }
+  private updating = false;
 
   setOnTuningChange(callback: () => void): void {
     this.onTuningChange = callback;
@@ -44,14 +34,15 @@ export class GlassesDisplay {
     try {
       this.reportStatus('Waiting for bridge...', false);
 
-      // Wait for the Even App to inject the bridge (with 8s timeout)
-      this.bridge = await withTimeout(waitForEvenAppBridge(), 8000);
-      this.reportStatus('Bridge ready, creating display...', false);
+      this.bridge = await withTimeout(waitForEvenAppBridge(), 15000);
+      this.reportStatus('Bridge ready, creating page...', false);
 
-      // Immediately create the page — matching the pattern used by working apps
+      // Text-only layout: 2 containers on a 576x288 canvas
+      // Container 1: Header (tuning name + string names)
+      // Container 2: Main display (note + cents), receives tap events
       const result = await this.bridge.createStartUpPageContainer(
         new CreateStartUpPageContainer({
-          containerTotalNum: 3,
+          containerTotalNum: 2,
           textObject: [
             new TextContainerProperty({
               containerID: 1,
@@ -59,51 +50,38 @@ export class GlassesDisplay {
               xPosition: 0,
               yPosition: 0,
               width: 576,
-              height: 50,
-              content: 'Standard  E A D G B E',
+              height: 80,
+              content: 'Guitar Tuner\n  Standard  E A D G B E',
               borderWidth: 0,
               paddingLength: 4,
               isEventCapture: 0,
             }),
             new TextContainerProperty({
-              containerID: 3,
-              containerName: 'noteinfo',
+              containerID: 2,
+              containerName: 'main',
               xPosition: 0,
-              yPosition: 180,
+              yPosition: 80,
               width: 576,
-              height: 108,
-              content: '         --\n       0 cents',
+              height: 208,
+              content: '\n\n      Tap Start on phone',
               borderWidth: 0,
               paddingLength: 4,
               isEventCapture: 1,
             }),
           ],
-          imageObject: [
-            new ImageContainerProperty({
-              containerID: 2,
-              containerName: 'gauge',
-              xPosition: 188,
-              yPosition: 55,
-              width: 200,
-              height: 100,
-            }),
-          ],
         })
       );
 
-      this.reportStatus(`Page created (result: ${result})`, false);
+      this.reportStatus(`Page result: ${result}`, false);
 
       if (result !== 0) {
-        this.reportStatus(`Page creation failed: ${result}`, false);
+        this.reportStatus(`Page failed (code ${result})`, false);
         return false;
       }
 
       this.pageCreated = true;
       this.connected = true;
       this.setupEventListeners();
-
-      // Send initial gauge image
-      await this.sendGaugeImage(0, false);
       this.reportStatus('Connected!', true);
       return true;
     } catch (e) {
@@ -123,6 +101,7 @@ export class GlassesDisplay {
 
     this.bridge.onEvenHubEvent((event: any) => {
       if (event.sysEvent) return;
+      // Text container tap or scroll triggers tuning change
       if (event.textEvent && this.onTuningChange) {
         const evtType = event.textEvent.eventType;
         if (evtType === 0 || evtType === undefined) {
@@ -132,46 +111,30 @@ export class GlassesDisplay {
     });
   }
 
-  private async canvasToPngBytes(): Promise<number[]> {
-    const blob = await new Promise<Blob>((resolve) =>
-      this.offscreenCanvas.toBlob((b) => resolve(b!), 'image/png')
-    );
-    const buf = await blob.arrayBuffer();
-    return Array.from(new Uint8Array(buf));
-  }
-
-  private async sendGaugeImage(centsOff: number, inTune: boolean): Promise<void> {
-    if (!this.bridge) return;
-    this.renderGaugeImage(centsOff, inTune);
-    const imageData = await this.canvasToPngBytes();
-
-    await this.bridge.updateImageRawData(
-      new ImageRawDataUpdate({
-        containerID: 2,
-        containerName: 'gauge',
-        imageData,
-      })
-    );
-  }
-
   async update(result: DetectionResult, _tuning: TuningMode): Promise<void> {
-    if (!this.connected || !this.bridge || !this.pageCreated) return;
+    if (!this.connected || !this.bridge || !this.pageCreated || this.updating) return;
 
+    this.updating = true;
     try {
-      await this.sendGaugeImage(result.centsOff, result.inTune);
+      const gauge = this.buildGaugeText(result.centsOff);
+      const status = result.inTune ? '  IN TUNE' : (result.centsOff > 0 ? '  SHARP' : '  FLAT');
+      const centsStr = (result.centsOff > 0 ? '+' : '') + result.centsOff;
 
-      const noteText = `     ${result.noteName}${result.octave}\n    ${result.centsOff > 0 ? '+' : ''}${result.centsOff} cents`;
+      const content = `${gauge}\n\n      ${result.noteName}${result.octave}   ${centsStr}c${status}`;
+
       await this.bridge.textContainerUpgrade(
         new TextContainerUpgrade({
-          containerID: 3,
-          containerName: 'noteinfo',
+          containerID: 2,
+          containerName: 'main',
           contentOffset: 0,
           contentLength: 2000,
-          content: noteText,
+          content,
         })
       );
     } catch {
-      // Silently handle update failures (glasses may disconnect)
+      // Silently handle update failures
+    } finally {
+      this.updating = false;
     }
   }
 
@@ -179,14 +142,14 @@ export class GlassesDisplay {
     if (!this.connected || !this.bridge || !this.pageCreated) return;
 
     try {
-      const stringNames = tuning.strings.map(s => s.note.replace(/[0-9]/g, '')).join(' ');
+      const stringNames = tuning.strings.map(s => s.note.replace(/[0-9]/g, '')).join('  ');
       await this.bridge.textContainerUpgrade(
         new TextContainerUpgrade({
           containerID: 1,
           containerName: 'header',
           contentOffset: 0,
           contentLength: 2000,
-          content: `${tuning.name}  ${stringNames}`,
+          content: `Guitar Tuner\n  ${tuning.name}  ${stringNames}`,
         })
       );
     } catch {
@@ -194,59 +157,30 @@ export class GlassesDisplay {
     }
   }
 
-  private renderGaugeImage(centsOff: number, inTune: boolean): void {
-    const ctx = this.offscreenCtx;
-    const w = 200;
-    const h = 100;
+  private buildGaugeText(centsOff: number): string {
+    // Build a text-based gauge: 25 positions, center = in-tune
+    // Example: "  ◄━━━━━━━━━━━━▼━━━━━━━━━━━━►"
+    const width = 25;
+    const center = Math.floor(width / 2);
+    const clamped = Math.max(-50, Math.min(50, centsOff));
+    const pos = center + Math.round((clamped / 50) * center);
 
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(0, 0, w, h);
-
-    const cx = w / 2;
-    const cy = h + 15;
-    const radius = 80;
-
-    ctx.strokeStyle = '#444444';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.arc(cx, cy, radius, Math.PI + 0.4, -0.4);
-    ctx.stroke();
-
-    ctx.strokeStyle = inTune ? '#ffffff' : '#666666';
-    ctx.lineWidth = 5;
-    ctx.beginPath();
-    ctx.arc(cx, cy, radius, Math.PI + 1.15, Math.PI + 1.45);
-    ctx.stroke();
-
-    for (let i = -5; i <= 5; i++) {
-      const normAngle = -Math.PI / 2 + (i / 5) * 0.9;
-      const tickLen = i === 0 ? 12 : 6;
-      ctx.strokeStyle = i === 0 ? '#ffffff' : '#666666';
-      ctx.lineWidth = i === 0 ? 2 : 1;
-      ctx.beginPath();
-      ctx.moveTo(cx + Math.cos(normAngle) * (radius - tickLen), cy + Math.sin(normAngle) * (radius - tickLen));
-      ctx.lineTo(cx + Math.cos(normAngle) * radius, cy + Math.sin(normAngle) * radius);
-      ctx.stroke();
+    const chars: string[] = [];
+    for (let i = 0; i < width; i++) {
+      if (i === center) {
+        chars.push('|');
+      } else if (i === pos) {
+        chars.push(Math.abs(centsOff) < 5 ? 'O' : '#');
+      } else {
+        chars.push('-');
+      }
+    }
+    // If pos === center, mark center as the indicator
+    if (pos === center) {
+      chars[center] = 'O';
     }
 
-    const clampedCents = Math.max(-50, Math.min(50, centsOff));
-    const needleAngle = -Math.PI / 2 + (clampedCents / 50) * 0.9;
-    const needleLen = radius - 15;
-
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.lineTo(
-      cx + Math.cos(needleAngle) * needleLen,
-      cy + Math.sin(needleAngle) * needleLen
-    );
-    ctx.stroke();
-
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.arc(cx, cy, 3, 0, Math.PI * 2);
-    ctx.fill();
+    return '  ' + chars.join('');
   }
 }
 

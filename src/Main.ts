@@ -129,9 +129,9 @@ function detectionLoop(): void {
     // Highlight active string target
     highlightActiveString(result.nearestString?.note ?? null);
 
-    // Update glasses (throttled to ~10Hz)
+    // Update glasses (throttled to ~4Hz to avoid BLE congestion)
     const now = performance.now();
-    if (now - lastGlassesUpdate > 100) {
+    if (now - lastGlassesUpdate > 250) {
       lastGlassesUpdate = now;
       glassesDisplay.update(result, tunerEngine.currentTuning).catch(() => {});
     }
