@@ -3,6 +3,8 @@ import { TunerEngine } from './TunerEngine';
 import { CanvasGauge } from './CanvasGauge';
 import { GlassesDisplay } from './GlassesDisplay';
 
+console.log('[Main] Guitar Tuner JS loaded');
+
 const pitchDetector = new PitchDetector();
 const tunerEngine = new TunerEngine();
 const glassesDisplay = new GlassesDisplay();
@@ -35,8 +37,9 @@ glassesDisplay.setOnStatus((msg, ok) => {
   glassesStatusEl.className = ok ? 'connected' : '';
 });
 
-// Glasses: try to connect (non-blocking, waits for BLE connection)
+// Glasses: try to connect (non-blocking, waits for BLE bridge)
 glassesDisplay.init().then((connected) => {
+  console.log('[Main] Glasses init result:', connected);
   if (connected) {
     glassesDisplay.setOnTuningChange(() => {
       tunerEngine.nextTuning();
@@ -44,6 +47,8 @@ glassesDisplay.init().then((connected) => {
     });
     glassesDisplay.updateTuningHeader(tunerEngine.currentTuning).catch(() => {});
   }
+}).catch((err) => {
+  console.error('[Main] Glasses init error:', err);
 });
 
 // Event listeners

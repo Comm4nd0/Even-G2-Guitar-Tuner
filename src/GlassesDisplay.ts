@@ -1,6 +1,7 @@
 import {
   waitForEvenAppBridge,
   CreateStartUpPageContainer,
+  StartUpPageCreateResult,
   TextContainerProperty,
   TextContainerUpgrade,
   type EvenAppBridge,
@@ -9,7 +10,6 @@ import { DetectionResult, TuningMode } from './types';
 
 type StatusCallback = (msg: string, ok: boolean) => void;
 
-// Match the SDK canvas resolution (from Pong reference app)
 const DISPLAY_WIDTH = 576;
 const DISPLAY_HEIGHT = 288;
 
@@ -38,24 +38,26 @@ export class GlassesDisplay {
     try {
       this.reportStatus('Waiting for bridge...', false);
 
-      const bridge = await withTimeout(waitForEvenAppBridge(), 6000);
+      const bridge = await withTimeout(waitForEvenAppBridge(), 10_000);
       this.bridge = bridge;
-      this.reportStatus('Bridge ready, creating page...', false);
+      this.reportStatus('Bridge found, setting up display...', false);
 
-      // Register event handler BEFORE creating display (matching Pong pattern)
       bridge.onEvenHubEvent((event) => {
         this.onEvent(event);
       });
 
-      // Create the startup page (must be called exactly once)
-      await this.createStartupPage();
+      const result = await withTimeout(this.createStartupPage(), 8_000);
+      if (result !== StartUpPageCreateResult.success) {
+        this.reportStatus(`Page create returned ${result}`, false);
+        return false;
+      }
 
       this.connected = true;
-      this.reportStatus('Connected!', true);
+      this.reportStatus('Connected', true);
       return true;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      this.reportStatus(`Init failed: ${msg}`, false);
+      this.reportStatus(`Failed: ${msg}`, false);
       this.connected = false;
       return false;
     }
@@ -65,19 +67,14 @@ export class GlassesDisplay {
     return this.connected;
   }
 
-  /**
-   * Creates the initial page layout on the glasses.
-   * Follows the exact Pong pattern:
-   * - Container 1 ('evt'): invisible full-screen event capture
-   * - Container 2 ('screen'): full-screen text content display
-   */
-  private async createStartupPage(): Promise<void> {
-    if (!this.bridge) return;
+  private async createStartupPage(): Promise<StartUpPageCreateResult> {
+    if (!this.bridge) {
+      throw new Error('No bridge');
+    }
 
     const config = {
       containerTotalNum: 2,
       textObject: [
-        // Container 1: invisible event capture overlay (matches Pong exactly)
         new TextContainerProperty({
           containerID: 1,
           containerName: 'evt',
@@ -89,7 +86,6 @@ export class GlassesDisplay {
           isEventCapture: 1,
           paddingLength: 0,
         }),
-        // Container 2: main content display
         new TextContainerProperty({
           containerID: 2,
           containerName: 'screen',
@@ -104,10 +100,14 @@ export class GlassesDisplay {
       ],
     };
 
-    await this.bridge.createStartUpPageContainer(
+    const result = await this.bridge.createStartUpPageContainer(
       new CreateStartUpPageContainer(config)
     );
-    this.startupRendered = true;
+    console.log('[Glasses] createStartUpPageContainer result:', result);
+    if (result === StartUpPageCreateResult.success) {
+      this.startupRendered = true;
+    }
+    return result;
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -206,7 +206,7 @@ export class GlassesDisplay {
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = window.setTimeout(() => {
-      reject(new Error(`Even bridge not detected within ${ms}ms`));
+      reject(new Error(`Timed out after ${ms}ms`));
     }, ms);
 
     promise
