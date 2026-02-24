@@ -29,15 +29,18 @@
   <script type="module" src="/src/Main.ts"></script>
   <script>
     // After the app script block, check if it ran at all.
-    // If __appStarted is not set, the script block had a parse/load error.
     setTimeout(function() {
       if (!window.__appStarted) {
         var s = document.getElementById('status');
-        if (s && s.textContent.indexOf('App') === -1) {
-          s.textContent = 'App script did not execute (parse error or blocked)';
+        if (s) {
+          var cur = s.textContent;
+          // Don't overwrite an existing error message
+          if (cur.indexOf('rror') === -1 && cur.indexOf('xecut') === -1) {
+            s.textContent = 'App script did not execute. Status was: ' + cur;
+          }
         }
       }
-    }, 500);
+    }, 1500);
   </script>
 </body>
 </html>

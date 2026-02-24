@@ -2,9 +2,10 @@ import { defineConfig, Plugin } from 'vite';
 
 // Inlines JS and CSS directly into index.html so there are no external
 // files to load. The JS bundle is stored in a non-executing <script> tag
-// and executed via eval() — the only method that works reliably in the
-// Even app WebView (external files, large inline scripts, and Blob URLs
-// are all blocked).
+// and executed via DOM script injection — a tiny loader reads the code
+// and creates a new <script> element at runtime, bypassing WebView
+// restrictions on external files, large inline scripts, Blob URLs,
+// and eval().
 function inlineBundle(): Plugin {
   return {
     name: 'inline-bundle',
@@ -17,11 +18,10 @@ function inlineBundle(): Plugin {
       if (htmlAsset.type !== 'asset') return;
       let html = htmlAsset.source as string;
 
-      // Store JS in a non-executing text/plain block, then eval() it
-      // from a tiny loader script. This avoids:
-      //  - External file fetches (blocked in WebView)
-      //  - Large inline <script> blocks (silently fail in WebView)
-      //  - Blob URLs (blocked in WebView)
+      // Store JS in a non-executing text/plain block, then inject it
+      // as a dynamically-created <script> element. This bypasses the
+      // HTML parser (which chokes on large inline scripts) while still
+      // being treated as a normal inline script by the JS engine.
       for (const [key, chunk] of Object.entries(bundle)) {
         if (chunk.type === 'chunk' && key.endsWith('.js')) {
           const srcPattern = new RegExp(
@@ -39,10 +39,13 @@ function inlineBundle(): Plugin {
   try{
     var code=document.getElementById('app-bundle').textContent;
     if(!code){if(s)s.textContent='Error: app-bundle element empty';return;}
-    if(s)s.textContent='Executing app ('+code.length+' chars)...';
-    (0,eval)(code);
+    if(s)s.textContent='Executing ('+code.length+' chars)...';
+    var el=document.createElement('script');
+    el.textContent=code;
+    document.body.appendChild(el);
+    if(s&&!window.__appStarted)s.textContent='Executed but app did not start. Length:'+code.length;
   }catch(e){
-    if(s)s.textContent='Eval error: '+e.message;
+    if(s)s.textContent='Exec error: '+e.message;
   }
 })();
 </script>`;
