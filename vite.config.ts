@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-  base: '/Even-G2-Guitar-Tuner/',
+  base: './',
   server: {
     host: true,
     port: 5173,
