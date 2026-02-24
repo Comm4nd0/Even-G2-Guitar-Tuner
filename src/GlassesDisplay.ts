@@ -4,11 +4,14 @@ import {
   StartUpPageCreateResult,
   TextContainerProperty,
   TextContainerUpgrade,
+  OsEventTypeList,
   type EvenAppBridge,
 } from '@evenrealities/even_hub_sdk';
 import { DetectionResult, TuningMode } from './types';
 
 type StatusCallback = (msg: string, ok: boolean) => void;
+type TuningChangeCallback = (direction: 'next' | 'prev') => void;
+type AudioDataCallback = (pcm: Uint8Array) => void;
 
 const DISPLAY_WIDTH = 576;
 const DISPLAY_HEIGHT = 288;
@@ -17,16 +20,21 @@ export class GlassesDisplay {
   private bridge: EvenAppBridge | null = null;
   private connected = false;
   private startupRendered = false;
-  private onTuningChange: (() => void) | null = null;
+  private onTuningChange: TuningChangeCallback | null = null;
   private onStatus: StatusCallback | null = null;
+  private onAudioData: AudioDataCallback | null = null;
   private pushInFlight = false;
 
-  setOnTuningChange(callback: () => void): void {
+  setOnTuningChange(callback: TuningChangeCallback): void {
     this.onTuningChange = callback;
   }
 
   setOnStatus(callback: StatusCallback): void {
     this.onStatus = callback;
+  }
+
+  setOnAudioData(callback: AudioDataCallback): void {
+    this.onAudioData = callback;
   }
 
   private reportStatus(msg: string, ok: boolean): void {
@@ -67,6 +75,27 @@ export class GlassesDisplay {
     return this.connected;
   }
 
+  async startMic(): Promise<boolean> {
+    if (!this.bridge) return false;
+    try {
+      const ok = await this.bridge.audioControl(true);
+      console.log('[Glasses] audioControl(true) =>', ok);
+      return ok;
+    } catch (e) {
+      console.error('[Glasses] audioControl failed:', e);
+      return false;
+    }
+  }
+
+  async stopMic(): Promise<boolean> {
+    if (!this.bridge) return false;
+    try {
+      return await this.bridge.audioControl(false);
+    } catch {
+      return false;
+    }
+  }
+
   private async createStartupPage(): Promise<StartUpPageCreateResult> {
     if (!this.bridge) {
       throw new Error('No bridge');
@@ -89,7 +118,7 @@ export class GlassesDisplay {
         new TextContainerProperty({
           containerID: 2,
           containerName: 'screen',
-          content: 'Guitar Tuner\nTap Start on phone',
+          content: 'Guitar Tuner\nStarting...',
           xPosition: 0,
           yPosition: 0,
           width: DISPLAY_WIDTH,
@@ -115,15 +144,25 @@ export class GlassesDisplay {
     // Ignore system events
     if (event.sysEvent) return;
 
-    // Any text/list event triggers tuning change
+    // Handle audio events from glasses mic
+    if (event.audioEvent?.audioPcm) {
+      if (this.onAudioData) this.onAudioData(event.audioEvent.audioPcm);
+      return;
+    }
+
+    // Handle text/list events (glasses temple tap, R1 ring controls)
     const evtType =
       event.textEvent?.eventType ??
       event.listEvent?.eventType;
 
-    if (evtType === 0 || evtType === undefined) {
-      if (event.textEvent || event.listEvent) {
-        if (this.onTuningChange) this.onTuningChange();
-      }
+    if (!(event.textEvent || event.listEvent)) return;
+
+    if (evtType === OsEventTypeList.SCROLL_BOTTOM_EVENT) {
+      if (this.onTuningChange) this.onTuningChange('prev');
+    } else if (evtType === OsEventTypeList.SCROLL_TOP_EVENT) {
+      if (this.onTuningChange) this.onTuningChange('next');
+    } else if (evtType === OsEventTypeList.CLICK_EVENT || evtType === 0 || evtType === undefined) {
+      if (this.onTuningChange) this.onTuningChange('next');
     }
   }
 
@@ -169,7 +208,7 @@ export class GlassesDisplay {
           containerName: 'screen',
           contentOffset: 0,
           contentLength: 2000,
-          content: `${tuning.name}  ${stringNames}\n\n\n      Tap Start on phone`,
+          content: `${tuning.name}  ${stringNames}\n\n\n      Listening...`,
         })
       );
     } catch {
