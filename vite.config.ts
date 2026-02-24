@@ -1,12 +1,13 @@
 import { defineConfig, Plugin } from 'vite';
 
-// Inlines JS and CSS directly into index.html so there are no external
-// files to load. The JS bundle is stored in a non-executing <script> tag
-// and executed via DOM script injection — a tiny loader reads the code
-// and creates a new <script> element at runtime, bypassing WebView
-// restrictions on external files, large inline scripts, Blob URLs,
-// and eval().
+// Inlines JS and CSS directly into index.html. The Even app WebView
+// cannot fetch external files, and its HTML parser chokes on any single
+// element larger than ~10-20KB (inline scripts, text/plain blocks, etc).
+// To work around this, we base64-encode the JS bundle and split it into
+// many small <script> chunks (~4KB each) that progressively build a
+// string variable. A final small script decodes and executes the code.
 function inlineBundle(): Plugin {
+  const CHUNK_SIZE = 4000;
   return {
     name: 'inline-bundle',
     enforce: 'post',
@@ -18,10 +19,6 @@ function inlineBundle(): Plugin {
       if (htmlAsset.type !== 'asset') return;
       let html = htmlAsset.source as string;
 
-      // Store JS in a non-executing text/plain block, then inject it
-      // as a dynamically-created <script> element. This bypasses the
-      // HTML parser (which chokes on large inline scripts) while still
-      // being treated as a normal inline script by the JS engine.
       for (const [key, chunk] of Object.entries(bundle)) {
         if (chunk.type === 'chunk' && key.endsWith('.js')) {
           const srcPattern = new RegExp(
@@ -29,28 +26,37 @@ function inlineBundle(): Plugin {
           );
           html = html.replace(srcPattern, '');
 
-          // Escape </script in the bundle so it doesn't close the text/plain tag
-          const safeCode = chunk.code.replace(/<\/script/gi, '<\\/script');
+          // Base64-encode the bundle and split into small chunks.
+          // Base64 is safe to split at any boundary (no escape sequences).
+          const encoded = Buffer.from(chunk.code, 'utf-8').toString('base64');
+          const chunks: string[] = [];
+          for (let i = 0; i < encoded.length; i += CHUNK_SIZE) {
+            chunks.push(encoded.slice(i, i + CHUNK_SIZE));
+          }
 
-          const storage = `<script type="text/plain" id="app-bundle">${safeCode}</script>`;
-          const loader = `<script>
+          // Build a series of tiny <script> tags that concatenate chunks
+          let injection = `<script>window.__c='';</script>\n`;
+          for (const c of chunks) {
+            injection += `<script>window.__c+='${c}';</script>\n`;
+          }
+          // Final small script: decode base64, create script element, execute
+          injection += `<script>
 (function(){
   var s=document.getElementById('status');
   try{
-    var code=document.getElementById('app-bundle').textContent;
-    if(!code){if(s)s.textContent='Error: app-bundle element empty';return;}
-    if(s)s.textContent='Executing ('+code.length+' chars)...';
+    var code=atob(window.__c);
+    if(s)s.textContent='Executing ('+code.length+' chars, '+window.__c.length+' b64)...';
     var el=document.createElement('script');
     el.textContent=code;
     document.body.appendChild(el);
-    if(s&&!window.__appStarted)s.textContent='Executed but app did not start. Length:'+code.length;
+    if(s&&!window.__appStarted)s.textContent='Executed but app did not start';
   }catch(e){
     if(s)s.textContent='Exec error: '+e.message;
   }
 })();
 </script>`;
 
-          html = html.replace('</body>', storage + '\n' + loader + '\n</body>');
+          html = html.replace('</body>', injection + '</body>');
           delete bundle[key];
         }
       }
