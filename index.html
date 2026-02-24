@@ -25,8 +25,8 @@
     setTimeout(function() {
       if (!window.__appStarted) {
         var s = document.getElementById('status');
-        if (s && s.textContent === 'Loading...') {
-          s.textContent = 'Module failed to load (check console)';
+        if (s) {
+          s.textContent = 'Module did not start. Protocol: ' + location.protocol + ' URL: ' + location.href.substring(0, 80);
         }
       }
     }, 5000);
