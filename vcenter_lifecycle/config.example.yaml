@@ -1,0 +1,36 @@
+# vCenter Lifecycle Manager – Download Settings Configuration
+# Copy this file to config.yaml and fill in your values.
+
+vcenter:
+  host: "vcenter.example.com"
+  username: "administrator@vsphere.local"
+  password: "changeme"
+  verify_ssl: false
+
+downloads:
+  # Automatically check for new patches/updates
+  auto_check_enabled: true
+
+  # Automatically stage (download) patches when found
+  auto_download_enabled: true
+
+  # Where to download patches from: INTERNET or UMDS
+  source:
+    type: "INTERNET"
+    # Only required when type is UMDS:
+    # umds_url: "https://umds.internal.example.com/vmware-umds"
+
+  # How often to check for new patches
+  schedule:
+    enabled: true
+    day: "EVERYDAY"     # EVERYDAY, MONDAY, TUESDAY, ... SUNDAY
+    hour: 2             # 0-23
+    minute: 0           # 0-59
+
+  # Proxy for patch downloads (optional)
+  proxy:
+    enabled: false
+    # server: "proxy.example.com"
+    # port: 8080
+    # username: ""
+    # password: ""
