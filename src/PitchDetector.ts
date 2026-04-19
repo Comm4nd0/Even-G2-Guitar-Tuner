@@ -2,6 +2,8 @@
  * YIN pitch detection algorithm.
  * Detects fundamental frequency from a time-domain audio buffer.
  */
+const RMS_GATE = 0.01;
+
 export class PitchDetector {
   private threshold: number;
 
@@ -10,13 +12,14 @@ export class PitchDetector {
   }
 
   detect(buffer: Float32Array, sampleRate: number): number | null {
-    // Signal gate: check RMS level
+    if (!buffer || buffer.length < 4) return null;
+
     let rms = 0;
     for (let i = 0; i < buffer.length; i++) {
       rms += buffer[i] * buffer[i];
     }
     rms = Math.sqrt(rms / buffer.length);
-    if (rms < 0.01) return null;
+    if (rms < RMS_GATE) return null;
 
     const halfSize = Math.floor(buffer.length / 2);
 

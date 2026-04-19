@@ -1,6 +1,9 @@
 import { TuningMode, TuningString, DetectionResult } from './types';
 
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+const HISTORY_SIZE = 7;
+const IN_TUNE_CENTS = 5;
+const STRING_NOTE_REGEX = /^([A-G][b#]?)(\d+)$/;
 
 const TUNINGS: TuningMode[] = [
   {
@@ -63,8 +66,6 @@ const TUNINGS: TuningMode[] = [
 export class TunerEngine {
   private tuningIndex = 0;
   private frequencyHistory: number[] = [];
-  private readonly historySize = 7;
-  private readonly inTuneThreshold = 5; // cents
 
   get currentTuning(): TuningMode {
     return TUNINGS[this.tuningIndex];
@@ -76,25 +77,43 @@ export class TunerEngine {
 
   nextTuning(): TuningMode {
     this.tuningIndex = (this.tuningIndex + 1) % TUNINGS.length;
+    this.frequencyHistory = [];
     return this.currentTuning;
   }
 
   prevTuning(): TuningMode {
     this.tuningIndex = (this.tuningIndex - 1 + TUNINGS.length) % TUNINGS.length;
+    this.frequencyHistory = [];
     return this.currentTuning;
   }
 
-  analyze(frequency: number): DetectionResult {
-    // Add to history for median smoothing
+  analyze(frequency: number): DetectionResult | null {
+    if (!Number.isFinite(frequency) || frequency <= 0) return null;
+
     this.frequencyHistory.push(frequency);
-    if (this.frequencyHistory.length > this.historySize) {
+    if (this.frequencyHistory.length > HISTORY_SIZE) {
       this.frequencyHistory.shift();
     }
 
     const smoothedFreq = this.medianFrequency();
-    const { noteName, octave, centsOff } = this.frequencyToNote(smoothedFreq);
     const nearestString = this.findNearestString(smoothedFreq);
-    const inTune = Math.abs(centsOff) < this.inTuneThreshold;
+
+    let noteName: string;
+    let octave: number;
+    let centsOff: number;
+
+    if (nearestString) {
+      // Report cents relative to the target string so the gauge guides the user to it
+      const parsed = STRING_NOTE_REGEX.exec(nearestString.note);
+      noteName = parsed ? parsed[1] : nearestString.note;
+      octave = parsed ? parseInt(parsed[2], 10) : 0;
+      centsOff = Math.round(1200 * Math.log2(smoothedFreq / nearestString.frequency));
+    } else {
+      const chromatic = this.frequencyToNote(smoothedFreq);
+      noteName = chromatic.noteName;
+      octave = chromatic.octave;
+      centsOff = chromatic.centsOff;
+    }
 
     return {
       frequency: smoothedFreq,
@@ -102,7 +121,7 @@ export class TunerEngine {
       octave,
       centsOff,
       nearestString,
-      inTune,
+      inTune: Math.abs(centsOff) < IN_TUNE_CENTS,
     };
   }
 

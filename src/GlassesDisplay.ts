@@ -161,7 +161,12 @@ export class GlassesDisplay {
       if (this.onTuningChange) this.onTuningChange('prev');
     } else if (evtType === OsEventTypeList.SCROLL_TOP_EVENT) {
       if (this.onTuningChange) this.onTuningChange('next');
-    } else if (evtType === OsEventTypeList.CLICK_EVENT || evtType === 0 || evtType === undefined) {
+    } else if (evtType === OsEventTypeList.CLICK_EVENT) {
+      if (this.onTuningChange) this.onTuningChange('next');
+    } else {
+      // Preserve legacy behavior: older SDK builds send 0 or undefined for taps.
+      // Logged so the fallback can be removed once CLICK_EVENT is confirmed.
+      console.debug('[Glasses] click-fallback event, evtType=', evtType);
       if (this.onTuningChange) this.onTuningChange('next');
     }
   }
@@ -188,8 +193,8 @@ export class GlassesDisplay {
           content,
         })
       );
-    } catch {
-      // Silently handle update failures
+    } catch (e) {
+      this.handlePushFailure('update', e);
     } finally {
       this.pushInFlight = false;
     }
@@ -211,11 +216,17 @@ export class GlassesDisplay {
           content: `${tuning.name}  ${stringNames}\n\n\n      Listening...`,
         })
       );
-    } catch {
-      // Silently handle
+    } catch (e) {
+      this.handlePushFailure('updateTuningHeader', e);
     } finally {
       this.pushInFlight = false;
     }
+  }
+
+  private handlePushFailure(source: string, error: unknown): void {
+    console.warn(`[Glasses] ${source} failed:`, error);
+    this.connected = false;
+    this.reportStatus('Disconnected — reopen app', false);
   }
 
   private buildGaugeText(centsOff: number): string {

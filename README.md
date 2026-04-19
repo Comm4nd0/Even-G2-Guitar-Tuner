@@ -45,7 +45,6 @@ Even-G2-Guitar-Tuner/
 │   ├── Main.ts             # App bootstrap, audio pipeline, detection loop
 │   ├── PitchDetector.ts    # YIN autocorrelation pitch detection
 │   ├── TunerEngine.ts      # Note mapping, tuning modes, median smoothing
-│   ├── CanvasGauge.ts      # Needle gauge component (unused, for future phone UI)
 │   ├── GlassesDisplay.ts   # Even Hub SDK bridge + glasses text rendering
 │   └── types.ts            # Shared TypeScript interfaces
 ├── app.json                # Even Hub app manifest
